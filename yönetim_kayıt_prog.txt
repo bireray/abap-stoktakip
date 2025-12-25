@@ -1,0 +1,742 @@
+
+MAIN 
+
+*&---------------------------------------------------------------------*
+*& Report ZEO_PROJECT2
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZEO_PROJECT3.
+
+INCLUDE ZEO_PROJECT3_TOP.
+INCLUDE ZEO_PROJECT3_CLS.
+INCLUDE ZEO_PROJECT2_FORM.
+INCLUDE ZEO_PROJECT3_PBO.
+INCLUDE ZEO_PROJECT3_PAI.
+
+
+start-of-selection.
+
+  perform get_data.
+  perform show_data.
+
+*****************************************************************************
+
+TOP - DATA DECLARATIONS
+
+
+*&---------------------------------------------------------------------*
+*&  Include           ZEO_PROJECT2_TOP
+*&---------------------------------------------------------------------*
+
+
+TABLES zeo_stok.
+
+"Dıalog Programlama Verileri
+
+DATA:
+  gv_belno   TYPE zde_belno,
+  gv_malno   TYPE zde_malno,
+  gv_malzeme TYPE zde_malzeme,
+  gv_miktar  TYPE zde_malmiktar,
+  gv_total   TYPE zde_malmiktar,
+  gv_fiyat   TYPE zde_fiyat,
+  gv_datum   TYPE zde_datum.
+
+
+
+DATA: GV_ID     TYPE VRM_ID,
+      GT_VALUES TYPE VRM_VALUES,
+      GS_VALUES TYPE VRM_VALUE,
+      GV_TVAL   TYPE VRM_VALUE-TEXT.
+
+CLASS lcl_event_receiver DEFINITION DEFERRED.   "CLASS TANIMLAMALARI
+DATA : go_event_receiver TYPE REF TO lcl_event_receiver.
+
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE title.
+
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME.
+
+*PARAMETERS: p_bukrs LIKE bkpf-bukrs OBLIGATORY.
+*SELECT-OPTIONS s_blart FOR bkpf-blart.
+
+SELECTION-SCREEN END OF BLOCK b2.
+
+
+SELECTION-SCREEN END OF BLOCK b1.
+
+
+DATA: ok_code            TYPE sy-ucomm,
+      save_code          TYPE sy-ucomm,
+      g_grid             TYPE REF TO cl_gui_alv_grid,
+      g_custom_container TYPE REF TO cl_gui_custom_container,
+      gt_excluding       TYPE ui_functions,
+      gs_variant         TYPE disvariant,
+      gs_variant2        TYPE disvariant,
+      gs_layout          TYPE lvc_s_layo,
+      gt_fieldcat        TYPE lvc_t_fcat,
+      gs_fieldcat        TYPE lvc_s_fcat,
+      go_gbt             TYPE REF TO cl_gbt_multirelated_service,
+      go_bcs             TYPE REF TO cl_bcs,
+      go_doc_bcs         TYPE REF TO cl_document_bcs,
+      go_recipient       TYPE REF TO if_recipient_bcs,
+      gt_soli            TYPE TABLE OF soli,
+      gs_soli            TYPE soli,
+      gv_status          TYPE bcs_rqst, "MAILIN DURUMU ILE ILGILI BILGILER VERIR GONDERDI GÖNDEMREDİ
+      gv_content         TYPE string,
+      gv_konu            TYPE so_obj_des,
+      gv_alici           TYPE adr6-smtp_addr.
+
+
+DATA: gt_out TYPE TABLE OF zeo_stok,
+      gs_out LIKE LINE OF gt_out.
+
+DATA: gt_selected_rows TYPE lvc_t_row,
+      gs_selected_rows LIKE LINE OF gt_selected_rows.
+
+********************************************************************************************
+CLASS PROCESS
+
+*&---------------------------------------------------------------------*
+*&  Include           ZEO_PROJECT2_CLS
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&  Include           ZDW_EO_PROJECT_CLS
+*&---------------------------------------------------------------------*
+
+
+CLASS lcl_event_receiver DEFINITION.
+
+  PUBLIC SECTION.
+
+    METHODS:
+
+      handle_doubleclick
+                    FOR EVENT double_click OF cl_gui_alv_grid
+        IMPORTING e_row e_column es_row_no,
+
+      handle_button_click
+                    FOR EVENT button_click OF cl_gui_alv_grid
+        IMPORTING es_col_id  es_row_no,
+
+      handle_toolbar
+                    FOR EVENT toolbar OF cl_gui_alv_grid
+        IMPORTING e_object e_interactive,
+
+      handle_user_command
+                    FOR EVENT user_command OF cl_gui_alv_grid
+        IMPORTING e_ucomm,
+
+      handle_hotspot_click
+                    FOR EVENT hotspot_click OF cl_gui_alv_grid
+        IMPORTING e_row_id e_column_id es_row_no.
+
+ENDCLASS.                    "lcl_event_receiver DEFINITION
+
+*----------------------------------------------------------------------*
+*       CLASS LCL_EVENT_RECEIVER IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+
+
+CLASS lcl_event_receiver IMPLEMENTATION.
+
+  METHOD handle_doubleclick.
+
+  ENDMETHOD.                    "CATCH_DOUBLECLICK
+  METHOD handle_button_click.
+
+  ENDMETHOD.                    "handle_button_click
+
+  METHOD handle_toolbar.
+
+
+    DATA: ls_try  TYPE stb_button,
+          ls_real TYPE stb_button.
+    CLEAR: ls_try.
+    ls_try-function = '&EKLE'.
+    ls_try-quickinfo = 'EKLE'.
+    ls_try-text = 'STOĞA EKLE'.
+    ls_try-icon = '@CE@'.
+
+    APPEND ls_try TO e_object->mt_toolbar.
+
+    CLEAR: ls_real.
+
+    ls_real-function = '&MAIL'.
+    ls_real-quickinfo = 'MAIL'.
+    ls_real-text = 'Muhasebeye Gönder'.
+    ls_real-icon = '@1S@'.
+    APPEND ls_real TO e_object->mt_toolbar.
+
+
+
+  ENDMETHOD.                    "handle_toolbar
+
+  METHOD handle_user_command.
+
+    case e_ucomm.
+    when '&EKLE'.
+
+      PERFORM add_data.
+
+    when '&MAIL'.
+
+    CALL SCREEN 200 STARTING AT 10 10 ENDING AT 90 27.
+
+
+    endcase.
+
+
+
+  ENDMETHOD.                    "handle_user_command
+  METHOD handle_hotspot_click .
+    CALL METHOD g_grid->get_selected_rows
+      IMPORTING
+        et_index_rows = gt_selected_rows.
+
+
+
+*    LOOP AT gt_selected_rows INTO gs_selected_rows WHERE rowtype IS INITIAL.
+*      READ TABLE gt_out  INTO gs_out INDEX gs_selected_rows-index.
+*
+*      SET PARAMETER ID 'MAT' FIELD gs_out-matnr .
+*
+*      CALL TRANSACTION 'MM03' AND SKIP FIRST SCREEN .
+*    ENDLOOP.
+
+
+
+  ENDMETHOD.
+ENDCLASS .
+****************************************************************************************
+
+FORM - DATA PROCESS
+
+*&---------------------------------------------------------------------*
+*&  Include           ZEO_PROJECT2_F01
+*&---------------------------------------------------------------------*
+
+FORM get_data.
+
+  SELECT * FROM zeo_stok INTO TABLE gt_out.
+
+
+ENDFORM.
+
+FORM show_data.
+
+  CALL SCREEN 100.
+
+ENDFORM.
+
+
+
+FORM build_fieldcat.
+
+  gs_layout-zebra = 'X'.
+  gs_layout-sel_mode = 'A'.
+  CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+    EXPORTING
+*     I_BUFFER_ACTIVE        =
+      i_structure_name       = 'ZEO_STOK'
+      i_client_never_display = 'X'
+*     I_BYPASSING_BUFFER     =
+*     I_INTERNAL_TABNAME     =
+    CHANGING
+      ct_fieldcat            = gt_fieldcat
+    EXCEPTIONS
+      inconsistent_interface = 1
+      program_error          = 2
+      OTHERS                 = 3.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+
+
+ENDFORM.
+
+
+
+
+
+FORM fieldcat .
+
+  LOOP AT gt_fieldcat INTO gs_fieldcat.
+    CASE gs_fieldcat-fieldname.
+      WHEN 'BELNO'.
+        gs_fieldcat-scrtext_l  = 'Belge Numarası'.
+        gs_fieldcat-scrtext_m  = 'Belge Numarası'.
+        gs_fieldcat-scrtext_s  = 'Belge Numarası'.
+        gs_fieldcat-selddictxt = 'Belge Numarası'.
+
+      WHEN 'MALNO'.
+        gs_fieldcat-scrtext_l  = 'Malzeme Numarası'.
+        gs_fieldcat-scrtext_m  = 'Malzeme Numarası'.
+        gs_fieldcat-scrtext_s  = 'Malzeme Numarası'.
+        gs_fieldcat-selddictxt = 'Malzeme Numarası'.
+
+      WHEN 'MALZEME'.
+        gs_fieldcat-scrtext_l  = 'Malzeme'.
+        gs_fieldcat-scrtext_m  = 'Malzeme'.
+        gs_fieldcat-scrtext_s  = 'Malzeme'.
+        gs_fieldcat-selddictxt = 'Malzeme'.
+
+      WHEN 'MAL_MIKTAR'.
+        gs_fieldcat-scrtext_l  = 'Son Miktar'.
+        gs_fieldcat-scrtext_m  = 'Son Miktar'.
+        gs_fieldcat-scrtext_s  = 'Son Miktar'.
+        gs_fieldcat-selddictxt = 'Son Miktar'.
+        gs_fieldcat-edit       = abap_true.
+
+      WHEN 'TOTAL_MIKTAR'.
+        gs_fieldcat-scrtext_l  = 'Güncel Miktar'.
+        gs_fieldcat-scrtext_m  = 'Güncel Miktar'.
+        gs_fieldcat-scrtext_s  = 'Güncel Miktar'.
+        gs_fieldcat-selddictxt = 'Güncel Miktar'.
+
+      WHEN 'MAL_FIYAT'.
+        gs_fieldcat-scrtext_l  = 'M.Fiyat'.
+        gs_fieldcat-scrtext_m  = 'M.Fiyat'.
+        gs_fieldcat-scrtext_s  = 'M.Fiyat'.
+        gs_fieldcat-selddictxt = 'M.Fiyat'.
+        gs_fieldcat-coltext    = 'M.Fiyat'.
+
+      WHEN 'TARIH'.
+        gs_fieldcat-scrtext_l  = 'Tarih'.
+        gs_fieldcat-scrtext_m  = 'Tarih'.
+        gs_fieldcat-scrtext_s  = 'Tarih'.
+        gs_fieldcat-selddictxt = 'Tarih'.
+
+    ENDCASE.
+
+    MODIFY gt_fieldcat FROM gs_fieldcat.
+  ENDLOOP.
+
+ENDFORM.
+
+
+FORM display.
+
+
+  DATA: variant TYPE  disvariant.
+
+  DATA:
+    gt_sort TYPE lvc_t_sort,
+    wa_sort TYPE lvc_s_sort.
+
+
+  variant-report = sy-repid.
+  variant-username = sy-uname.
+
+  gs_layout-cwidth_opt = 'X'.
+
+  CALL METHOD g_grid->set_table_for_first_display
+    EXPORTING
+      is_layout                     = gs_layout
+      it_toolbar_excluding          = gt_excluding[]
+      i_save                        = 'X'
+      is_variant                    = variant
+    CHANGING
+      it_outtab                     = gt_out[]
+      it_fieldcatalog               = gt_fieldcat[]
+*     it_sort                       = gt_sort[]
+    EXCEPTIONS
+      invalid_parameter_combination = 1
+      program_error                 = 2
+      too_many_lines                = 3
+      OTHERS                        = 4.
+  IF sy-subrc <> 0.
+*   Implement suitable error handling here
+  ENDIF.
+
+
+  DATA: is_stable TYPE lvc_s_stbl.
+  is_stable-row = 'X'.
+  is_stable-col = 'X'.
+
+  g_grid->refresh_table_display(
+    EXPORTING
+      is_stable      =   is_stable
+    EXCEPTIONS
+      finished       = 1
+      OTHERS         = 2 ).
+  IF sy-subrc <> 0.
+*         message id sy-msgid type sy-msgty number sy-msgno
+*                    with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  ADD_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM add_data .
+
+
+  CALL METHOD g_grid->get_selected_rows
+    IMPORTING
+      et_index_rows = gt_selected_rows.
+
+
+  LOOP AT gt_selected_rows INTO gs_selected_rows WHERE rowtype IS INITIAL.
+    READ TABLE gt_out INTO gs_out INDEX gs_selected_rows-index.
+
+    gs_out-total_miktar = gs_out-mal_miktar + gs_out-total_miktar.
+
+    MODIFY gt_out   FROM gs_out INDEX gs_selected_rows-index.
+
+  ENDLOOP.
+  MODIFY zeo_stok FROM TABLE gt_out.
+
+IF sy-subrc eq 0.
+      MESSAGE 'Stok Miktarı Yenilendi' TYPE 'I' DISPLAY LIKE 'I'.
+  ELSE.
+
+    MESSAGE 'Stok Yenilenemedi' TYPE 'I' DISPLAY LIKE 'E'.
+
+
+ENDIF.
+
+
+  DATA: is_stable TYPE lvc_s_stbl.
+  is_stable-row = 'X'.
+  is_stable-col = 'X'.
+
+  g_grid->refresh_table_display(
+    EXPORTING
+      is_stable      =   is_stable
+    EXCEPTIONS
+      finished       = 1
+      OTHERS         = 2 ).
+
+
+
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SEND_INVOICE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM send_invoice .
+
+
+
+  CREATE OBJECT: go_gbt.
+
+    CALL METHOD g_grid->get_selected_rows
+    IMPORTING
+      et_index_rows = gt_selected_rows.
+
+  gv_content = '<!DOCTYPE html>                            '
+             &&'<html>                                     '
+             &&'<head>                                     '
+             &&'<meta charset="utf-8">                     '
+             &&'<style>                                    '
+             &&' th {                                      '
+             &&'  border:2px solid black;                  '
+             &&'  background-color: lightyellow;           '
+             &&'}                                          '
+             &&'                                           '
+             &&'td {                                       '
+             &&'                                           '
+             &&'  border: 1px solid black;                 '
+             &&'                                           '
+             &&'}                                          '
+             &&'                                           '
+             &&'</style>                                   '
+             &&'</head>                                    '
+             &&'<body>                                     '
+             &&'                                           '
+             &&'<h2>STOK KAYDI TABLOSU</h2>                '
+             &&'                                           '
+             &&'<table style="width:100%">                 '
+             &&'  <tr>                                     '
+             &&'    <th>BELGE NUMARASI</th>                '
+             &&'    <th>MALZEME NUMARASI</th>              '
+             &&'    <th>MALZEME TANIMI</th>                '
+             &&'    <th>MALZEME MIKTARI</th>               '
+             &&'    <th>MALZEME FİYATI</th>                '
+             &&'    <th>GÜNCEL TARİH</th>                  '
+             &&'  </tr>                                    '.
+
+
+
+  LOOP AT gt_selected_rows INTO gs_selected_rows WHERE ROWTYPE IS not INITIAL.
+    read TABLE gt_out INTO gs_out INDEX gs_selected_rows-index.
+    gv_content = gv_content && '  <tr>                     '
+               &&'    <td> ' && gs_out-belno  && '</td>    '
+              &&'    <td> ' && gs_out-malno  && '</td>    '
+              &&'    <td> ' && gs_out-malzeme  && '</td>  '
+              &&'    <td> ' && gs_out-mal_miktar  && '</td> '
+              &&'    <td> ' && gs_out-mal_fiyat  && '</td>  '
+              &&'    <td> ' && gs_out-tarih  && '</td> '
+              &&'  </tr>                                  '.
+  ENDLOOP.
+
+  gv_content = gv_content &&'</table>   '
+        &&'<p>Faturaların Muhasebe Kaydı 1 Hafta İçinde Oluşturulmalıdır.</p>  '
+           &&'</body>                   '
+           &&'</html>                   '.
+
+
+
+  gt_soli = cl_document_bcs=>string_to_soli( gv_content ). "string mail içeriğimin tabloya döndüğü yer.
+
+
+  CALL METHOD go_gbt->set_main_html
+    EXPORTING
+      content = gt_soli. "BURADA DA TABLOMU GBT ILETIM KÖPRÜSÜNE BAGLAMIS OLDUM.
+
+  go_doc_bcs = cl_document_bcs=>create_from_multirelated( "GBT DEN SONRA GELEN SUBJECT CONTENT MAIL ALANIMIN TEK BIR YERE TOPLUYORUM MULTI OLARAK
+              i_subject = gv_konu
+              i_multirel_service = go_gbt ).
+
+  go_recipient = cl_cam_address_bcs=>create_internet_address(
+                        i_address_string = gv_alici ). "GÖNDERMEK ISTEDIGIM MAIL ADRESI
+
+
+  go_bcs = cl_bcs=>create_persistent( ).   "BCS KISMINI CALISIR HALE GETIRIYORUM
+  go_bcs->set_document( i_document = go_doc_bcs )."DOCUMENT KISMINI CALISIR HALE GETIRIYORUM
+  go_bcs->add_recipient( i_recipient = go_recipient )."RECIPIENT KISMINI CALISIR HALE GETIRIYORUM
+
+  gv_status = 'N'.
+
+
+  CALL METHOD go_bcs->set_status_attributes
+    EXPORTING
+      i_requested_status = gv_status.
+
+  go_bcs->send( ).
+
+  COMMIT WORK. "BUNU DEMEK ZORUNDAYIZ
+
+
+  IF sy-subrc = 0.
+
+    MESSAGE 'MAİL BAŞARIYLA GÖNDERİLDİ' TYPE 'I' DISPLAY LIKE 'I'.
+  ELSE.
+
+    MESSAGE 'MAİL GÖNDERİLEMEDİ' TYPE 'I' DISPLAY LIKE 'E'.
+
+  ENDIF.
+
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  USER_INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM user_input .
+
+
+  gv_id = 'GV_MALZEME'.
+  gs_values-key = '1'.
+  gs_values-text = 'TV'.
+
+  APPEND gs_values TO gt_values.
+  gv_id = 'GV_MALZEME'..
+  gs_values-key = '2'.
+  gs_values-text = 'Süpürge'.
+
+  APPEND gs_values TO gt_values.
+  gv_id = 'GV_MALZEME'.
+  gs_values-key = '3'.
+  gs_values-text = 'Koltuk Takımı'.
+
+  APPEND gs_values TO gt_values.
+
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING
+      id     = gv_id
+      values = gt_values.
+
+
+ENDFORM.
+
+
+FORM set_newdata.
+
+
+  READ TABLE gt_values INTO gs_values WITH KEY key = gv_malzeme.
+  gs_out-belno        = gv_belno.
+  gs_out-malno        = gv_malno.
+  gs_out-malzeme      = gs_values-text .
+  gs_out-mal_miktar   = gv_miktar.
+  gs_out-total_miktar = gv_miktar.
+  gs_out-mal_fiyat    = gv_fiyat.
+  gs_out-tarih        = gv_datum.
+
+  APPEND gs_out TO gt_out.
+  MODIFY zeo_stok FROM TABLE gt_out.
+
+IF sy-subrc eq 0.
+  MESSAGE 'Veri sisteme eklendi' TYPE 'I' DISPLAY LIKE 'S'.
+
+ENDIF.
+
+
+  CALL METHOD g_grid->refresh_table_display( ).
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  DELETE_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM delete_data .
+
+    CALL METHOD g_grid->get_selected_rows
+    IMPORTING
+      et_index_rows = gt_selected_rows.
+
+LOOP AT gt_selected_rows INTO gs_selected_rows WHERE INDEX IS NOT INITIAL.
+
+  READ TABLE gt_out INTO gs_out INDEX gs_selected_rows-index.
+
+  delete TABLE gt_out FROM gs_out.
+delete zeo_stok FROM  gs_out.
+  EXIT.
+
+ENDLOOP.
+
+
+
+IF sy-subrc eq 0.
+  MESSAGE 'Veri sistemden silindi' TYPE 'I' DISPLAY LIKE 'I'.
+
+ENDIF.
+
+
+  CALL METHOD g_grid->refresh_table_display( ).
+
+
+
+ENDFORM.
+***************************************************************************************
+
+PROCESS BEFORE OUTPUT 
+
+*&---------------------------------------------------------------------*
+*&  Include           ZEO_PROJECT2_PBO
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+
+module status_0100 output.
+
+  set pf-status 'STATUS'.
+
+
+
+
+  if g_custom_container is initial.
+    create object g_custom_container
+      exporting
+        container_name = 'CC'.
+
+    create object g_grid
+      exporting
+        i_parent = g_custom_container.
+  endif.
+
+
+  create object go_event_receiver.
+
+  set handler go_event_receiver->handle_button_click  for g_grid.
+  set handler go_event_receiver->handle_toolbar       for g_grid.
+  set handler go_event_receiver->handle_user_command  for g_grid.
+  set handler go_event_receiver->handle_hotspot_click for g_grid.
+
+
+  perform build_fieldcat.
+  perform fieldcat .
+  perform display.
+  PERFORM user_input.
+
+  call method g_grid->check_changed_data .
+  call method g_grid->refresh_table_display .
+
+
+endmodule.
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0200  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0200 OUTPUT.
+  SET PF-STATUS 'STATUS2'.
+  PERFORM send_invoice.
+ENDMODULE.
+
+
+**************************************************************************************
+
+PROCESS AFTER INPUT
+
+*&---------------------------------------------------------------------*
+*&  Include           ZEO_PROJECT2_PAI
+*&---------------------------------------------------------------------*
+
+
+module user_command_0100 input.
+
+
+
+
+  case sy-ucomm.
+    when '&BACK'.
+      leave to screen 0.
+  WHEN '&EKLE'.
+
+    PERFORM set_newdata.
+
+  when '&DELETE'.
+    perform delete_data.
+
+  endcase.
+
+  g_grid->refresh_table_display( ).
+
+endmodule.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0200  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0200 INPUT.
+
+  case sy-ucomm.
+    when OTHERS.
+      leave to screen 0.
+  endcase.
+
+
+ENDMODULE.
+
+
+
+
